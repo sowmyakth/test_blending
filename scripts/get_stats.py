@@ -20,9 +20,16 @@ from scipy import spatial
 from scipy.spatial.distance import cdist
 
 
+def get_tru_cat_cent(cat, Args):
+    size = np.int(Args.size)
+    scale = np.float(Args.scale)
+    x0 = cat['dx'] / scale + (size - 1) / 2.
+    y0 = cat['dy'] / scale + (size - 1) / 2.
+    return x0, y0
+
+
 def get_tue_cat(cat, Args):
-    x1 = cat['dx'] / 0.2 + (4096 - 1) / 2.
-    y1 = cat['dy'] / 0.2 + (4096 - 1) / 2.
+    x1, y1 = get_tru_cat_cent(cat, Args)
     cond1 = (x1 >= int(Args.xmin) - 5) & (x1 < int(Args.xmax) + 5)
     cond2 = (y1 >= int(Args.ymin) - 5) & (y1 < int(Args.ymax) + 5)
     tru_cat = cat[np.where(cond1 & cond2)]
@@ -41,9 +48,8 @@ def get_det_cat(cat, Args):
 
 
 def get_primary_detection(tru_cat, det_cat,
-                          tolerance=5):
-    x1 = tru_cat['dx'] / 0.2 + (4096 - 1) / 2.
-    y1 = tru_cat['dy'] / 0.2 + (4096 - 1) / 2.
+                          Args, tolerance=5):
+    x1, y1 = get_tru_cat_cent(tru_cat, Args)
     z1_tree = spatial.KDTree(zip(x1, y1))
     x2 = det_cat['base_GaussianCentroid_x']
     y2 = det_cat['base_GaussianCentroid_y']
@@ -73,12 +79,11 @@ def get_sig_m(xx, yy, xy):
     return np.abs(det_Q)**0.25
 
 
-def get_dist_ratio(tru_cat, det_cat):
+def get_dist_ratio(tru_cat, det_cat, Args):
     psf_sig = np.mean(get_sig_m(det_cat['base_SdssShape_psf_xx'],
                                 det_cat['base_SdssShape_psf_yy'],
                                 det_cat['base_SdssShape_psf_xy']))
-    x1 = tru_cat['dx'][tru_cat['Detected'] != 1] / 0.2 + (4096 - 1) / 2.
-    y1 = tru_cat['dy'][tru_cat['Detected'] != 1] / 0.2 + (4096 - 1) / 2.
+    x1, y1 = get_tru_cat_cent(tru_cat, Args)
     x2 = det_cat['base_GaussianCentroid_x']
     y2 = det_cat['base_GaussianCentroid_y']
     int_dist = cdist(zip(x2, y2), zip(x1, y1),
@@ -86,18 +91,18 @@ def get_dist_ratio(tru_cat, det_cat):
     det_sigm = get_sig_m(det_cat['base_SdssShape_xx'],
                          det_cat['base_SdssShape_yy'],
                          det_cat['base_SdssShape_xy'])
-    gal_sigm = np.sqrt(psf_sig**2 + (tru_cat['sigma_m'] / 0.2)**2)
-    #t1 = np.resize(det_sigm**2, int_dist.shape)
-    #t2 = np.resize(gal_sigm**2, int_dist.T.shape).T
-    #new_unit_dist = np.sqrt(t1 + t2)
+    gal_sigm = np.sqrt(psf_sig**2 + (tru_cat['sigma_m'] / Args.scale)**2)
+    # t1 = np.resize(det_sigm**2, int_dist.shape)
+    # t2 = np.resize(gal_sigm**2, int_dist.T.shape).T
+    # new_unit_dist = np.sqrt(t1 + t2)
     t1 = np.resize(det_sigm, int_dist.shape)
     t2 = np.resize(gal_sigm, int_dist.T.shape).T
     new_unit_dist = t1 + t2
     return int_dist / new_unit_dist
 
 
-def get_ambig(tru_cat, det_cat):
-    ratio = get_dist_ratio(tru_cat, det_cat)
+def get_ambig(tru_cat, det_cat, Args):
+    ratio = get_dist_ratio(tru_cat, det_cat, Args)
     ambig = np.where(ratio < 1)
     ambig_det = np.unique(ambig[0])
     ambig_tru = np.unique(ambig[1])
@@ -113,26 +118,25 @@ def get_ambig(tru_cat, det_cat):
 
 def main(Args):
     # truth from catsim catalog (from wldebend)
-    band = 'r'
     parentdir = os.path.abspath("..")
     tru_file = os.path.join(parentdir, 'data',
-                            'wldeb_data/LSST_%s_trimmed.fits'%band)
+                            'wldeb_data/LSST_%s_trimmed.fits'%Args.band)
     in_cat = Table.read(tru_file, format='fits',
                         hdu=1)
     tru_cat = get_tue_cat(in_cat, Args)
     # Results from DM stack
     det_file = os.path.join(parentdir, 'data',
-                            'dm_output_%s.fits'%band)
+                            'dm_output_%s.fits'%Args.band)
     stack_cat = Table.read(det_file, format='fits',
                            hdu=1)
     det_cat = get_det_cat(stack_cat, Args)
-    get_primary_detection(tru_cat, det_cat)
-    get_ambig(tru_cat, det_cat)
+    get_primary_detection(tru_cat, det_cat, Args)
+    get_ambig(tru_cat, det_cat, Args)
     fname = os.path.join(parentdir, 'outputs',
-                         'trucat_analyis_%s_%s.fit'%(band, Args.num))
+                         'trucat_analyis_%s_%s.fit'%(Args.band, Args.num))
     tru_cat.write(fname, format='fits', overwrite=True)
     fname = os.path.join(parentdir, 'outputs',
-                         'detcat_analyis_%s_%s.fit'%(band, Args.num))
+                         'detcat_analyis_%s_%s.fit'%(Args.band, Args.num))
     det_cat.write(fname, format='fits', overwrite=True)
 
 
@@ -144,9 +148,15 @@ if __name__ == "__main__":
     parser.add_argument('--ymin', default=0,
                         help="y cord of lower left pixel to run analysis[Default:0]")
     parser.add_argument('--xmax', default=4096,
-                        help="x cord of top right pixel to run analysis[Default:100]")
+                        help="x cord of top right pixel to run analysis[Default:4096]")
     parser.add_argument('--ymax', default=4096,
-                        help="y cord of top right pixel to run analysis[Default:100]")
+                        help="y cord of top right pixel to run analysis[Default:4096]")
+    parser.add_argument('--size', default=4096,
+                        help="size of image (in pixels)[Default:4096]")
+    parser.add_argument('--scale', default=0.2,
+                        help="pixel size of image (in pixels)[Default:0.2]")
+    parser.add_argument('--band', default='r',
+                        help="Filter image was observed in [Default:r]")
     parser.add_argument('--num', default='0',
                         help="Number to denote output file name[Default:0]")
     args = parser.parse_args()
