@@ -83,7 +83,8 @@ def get_dist_ratio(tru_cat, det_cat, Args):
     psf_sig = np.mean(get_sig_m(det_cat['base_SdssShape_psf_xx'],
                                 det_cat['base_SdssShape_psf_yy'],
                                 det_cat['base_SdssShape_psf_xy']))
-    x1, y1 = get_tru_cat_cent(tru_cat, Args)
+    no_det, = np.where(tru_cat['Detected'] != 1)
+    x1, y1 = get_tru_cat_cent(tru_cat[no_det], Args)
     x2 = det_cat['base_GaussianCentroid_x']
     y2 = det_cat['base_GaussianCentroid_y']
     int_dist = cdist(zip(x2, y2), zip(x1, y1),
@@ -120,7 +121,7 @@ def main(Args):
     # truth from catsim catalog (from wldebend)
     parentdir = os.path.abspath("..")
     tru_file = os.path.join(parentdir, 'data',
-                            'wldeb_data/LSST_%s_trimmed.fits'%Args.band)
+                            'wldeb_data/LSST_%s_no_pstamps.fits'%Args.band)
     in_cat = Table.read(tru_file, format='fits',
                         hdu=1)
     tru_cat = get_tue_cat(in_cat, Args)
