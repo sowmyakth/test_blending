@@ -2,10 +2,10 @@
 from a random sample of 2 galaxy blends"""
 
 import galsim
-import matplotlib.pyplot as plt
+import os
 import numpy as np
 from scipy import spatial
-from astropy.table import Table, Column
+from astropy.table import Table
 import lsst.afw.table
 import lsst.afw.image
 import lsst.afw.math
@@ -17,13 +17,26 @@ import lsst.afw.detection
 
 def make_table(num):
     names = ('NUM', 'flux1', 'flux2', 'hlr1', 'hlr2',
-             'e1', 'e2', 'vmin', 'vmax', 'meas_flux')
-    dtype = ['int'] + ['float'] * len(names) - 1
-    cols = [range(num)] + [np.zeros(num)] * 4 + [np.zeros([num, 2])] * 5
+             'e1', 'e2', 'vmin', 'vmax')
+    dtype = ['int'] + ['float'] * (len(names) - 1)
+    cols = [range(num)] + [np.zeros(num)] * 4 + [np.zeros([num, 2])] * 4
     index_table = Table(cols, names=names, dtype=dtype)
     return index_table
 
+
 def get_rand_param(table):
+    """Get random parametrs of 2 galaxies"""
+    num = len(table)
+    np.random.seed(num)
+    table['flux1'] = np.random.uniform(2, 20, num)
+    table['flux2'] = np.random.uniform(0.5, 1, num)
+    table['hlr1'] = np.random.uniform(0.5, 2.5, num)
+    table['hlr2'] = np.random.uniform(0.5, 2.5, num)
+    table['e1'] = np.array([np.random.uniform(0, 0.5, num),
+                            np.random.uniform(0, 0.5, num)]).T
+    table['e2'] = np.array([np.random.uniform(0, 0.5, num),
+                            np.random.uniform(0, 0.5, num)]).T
+
 
 def get_range(hlr1, hlr2, low=0.9, high=1.8, num=30):
     """Returns distance between galaxies"""
@@ -167,11 +180,12 @@ def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2):
                            catalog2['base_SdssShape_xy'])
         r[i][0] = met_rho(hfpt1[0], hfpt2)
         r[i][1] = met_rho(hfpt2[0], hfpt1)
+        # import ipdb;ipdb.set_trace()
         if len(children) == 1:
             sig0 = get_sig_m(children['base_SdssShape_xx'],
                              children['base_SdssShape_yy'],
                              children['base_SdssShape_xy'])
-            unit_dist[i] = sig0 + sig[i][(match[1][select] + 1)%2]
+            unit_dist[i] = sig0 + sig[(match[1][select] + 1)%2]
         else:
             sigs = get_sig_m(children['base_SdssShape_xx'],
                              children['base_SdssShape_yy'],
@@ -194,14 +208,22 @@ def get_transition_points(met, num_detections):
 
 
 def main():
-    num = 100
+    num = 3 # 100
     tab = make_table(num)
+    get_rand_param(tab)
     for i in range(num):
         x0s = get_range(tab['hlr1'][i], tab['hlr2'][i])
-        met, det, flux = compute_val(x0s, tab['hlr1'][i], tab['hlr2'][i],
-                                     tab['flux1'][i], tab['flux2'][i],
-                                     tab['e1'][i], tab['e2'][i])
+        met, det = compute_val(x0s, tab['hlr1'][i], tab['hlr2'][i],
+                               tab['flux1'][i], tab['flux2'][i],
+                               tab['e1'][i], tab['e2'][i])
         v1, v2 = get_transition_points(met, det)
-        tab['v1'][i] = v1
-        tab['v2'][i] = v2
-        tab['meas_flux'][i] = flux
+        tab['vmin'][i] = v1
+        tab['vmax'][i] = v2
+    parentdir = os.path.abspath("..")
+    fname = os.path.join(parentdir, 'outputs',
+                         'ambig_para.fits')
+    tab.write(fname, format='fits', overwrite=True)
+
+
+if __name__ == "__main__":
+    main()
