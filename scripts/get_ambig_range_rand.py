@@ -6,6 +6,7 @@ import os
 import numpy as np
 from scipy import spatial
 from astropy.table import Table
+from scipy.stats import mode
 import lsst.afw.table
 import lsst.afw.image
 import lsst.afw.math
@@ -13,13 +14,14 @@ import lsst.meas.algorithms
 import lsst.meas.base
 import lsst.meas.deblender
 import lsst.afw.detection
+import matplotlib.pyplot as plt
 
 
 def make_table(num):
     names = ('NUM', 'flux1', 'flux2', 'hlr1', 'hlr2',
-             'e1', 'e2', 'vmin', 'vmax')
-    dtype = ['int'] + ['float'] * (len(names) - 1)
-    cols = [range(num)] + [np.zeros(num)] * 4 + [np.zeros([num, 2])] * 4
+             'e1', 'e2', 'vmin', 'vmax', 'amb_cent')
+    dtype = ['int'] + ['float'] * (len(names) - 2) + ['string']
+    cols = [range(num)] + [np.zeros(num)] * 4 + [np.zeros([num, 2])] * 4 + [['False'] * num]
     index_table = Table(cols, names=names, dtype=dtype)
     return index_table
 
@@ -28,17 +30,17 @@ def get_rand_param(table):
     """Get random parametrs of 2 galaxies"""
     num = len(table)
     np.random.seed(num)
-    table['flux1'] = np.random.uniform(2, 20, num)
+    table['flux1'] = np.random.uniform(4, 50, num)
     table['flux2'] = np.random.uniform(0.5, 1, num)
     table['hlr1'] = np.random.uniform(0.5, 2.5, num)
-    table['hlr2'] = np.random.uniform(0.5, 2.5, num)
+    table['hlr2'] = np.random.uniform(0.5, 1., num)
     table['e1'] = np.array([np.random.uniform(0, 0.5, num),
                             np.random.uniform(0, 0.5, num)]).T
     table['e2'] = np.array([np.random.uniform(0, 0.5, num),
                             np.random.uniform(0, 0.5, num)]).T
 
 
-def get_range(hlr1, hlr2, low=0.9, high=1.8, num=30):
+def get_range(hlr1, hlr2, low=0.6, high=2., num=35):
     """Returns distance between galaxies"""
     ratio = np.linspace(low, high, num)
     sum_val = (hlr1 + hlr2) / 0.2
@@ -118,7 +120,28 @@ def met_rho(hfpt, hfpt_rest):
     return hfpt.dot(hfpt) / denom
 
 
-def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2):
+def plot_gal(im1_b_off, im2_b_off,
+             im_b_on, psf_im):
+    plt.figure(figsize=[10, 12])
+    plt.subplot(4, 2, 1)
+    plt.imshow(im1_b_off.array)
+    plt.title('Galaxy 1')
+    plt.colorbar()
+    plt.subplot(4, 2, 2)
+    plt.imshow(im2_b_off.array)
+    plt.colorbar()
+    plt.title('Galaxy 2')
+    plt.subplot(4, 2, 3)
+    plt.imshow(im_b_on.array)
+    plt.colorbar()
+    plt.title('Galaxies combined')
+    plt.subplot(4, 2, 4)
+    plt.imshow(psf_im.array)
+    plt.title('PSF image')
+    plt.show()
+
+
+def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2, plot_last_gal=False):
     """Computes blending parametrs for pair of blended input galaxy
     parametrs"""
     var = 1e-10
@@ -131,6 +154,7 @@ def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2):
     r = np.ones([len(x0s), 2]) * -1
     unit_dist = np.ones(len(x0s)) * -1
     num_detections = np.zeros(len(x0s))
+    flux_b_on = np.zeros([len(x0s), 2])
     ret = []
     sig = [0, 0]
     for i, x0 in enumerate(x0s):
@@ -163,11 +187,12 @@ def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2):
                                   [ny / 2, ny / 2 + y0]))
         z = zip(children['base_SdssCentroid_x'],
                 children['base_SdssCentroid_y'])
-        match = tree.query(z, distance_upper_bound=10)
-        select = ~np.isnan(match[0])
+        match = tree.query(z, distance_upper_bound=15)
+        select = ~np.isinf(match[0])
         if len(select) == 0:
             print "detected center do not match true object"
             continue
+        flux_b_on[i][match[1][select]] = children['base_SdssShape_flux']
         # All good! Now procced with measurement
         num_detections[i] = len(children)
         ret.append(i)
@@ -192,8 +217,16 @@ def compute_val(x0s, hlr1, hlr2, flux1, flux2, e1, e2):
                              children['base_SdssShape_xy'])
             unit_dist[i] = sigs.sum()
     s = np.array([x0s / unit_dist] * 2).T
-    met = [r[ret], s[ret]]
-    return met, num_detections[ret]
+    # Make sure galaxy detected most is first in output array
+    q = np.where(flux_b_on == 0)
+    amb = mode(q[1]).mode[0]
+    rho = np.array([r.T[(amb + 1)%2], r.T[amb]]).T
+    flux_out = np.array([flux_b_on.T[(amb + 1)%2], flux_b_on.T[amb]]).T
+    met = [rho[ret], s[ret]]
+    if plot_last_gal is True:
+        plot_gal(im1_b_off, im2_b_off,
+                 im_b_on, psf_im)
+    return met, num_detections[ret], flux_out[ret], amb
 
 
 def get_transition_points(met, num_detections):
@@ -207,16 +240,45 @@ def get_transition_points(met, num_detections):
     return min_vals, max_vals
 
 
+def plot_stuff(flux_b_on, tru_flux, met, detection, v1, v2):
+    # met = [r, s]
+    br = ["green", 'red', 'blue']
+    colors = [br[int(i)] for i in detection]
+    titles = [r'$\rho$', 's']
+    num = len(met)
+    plt.figure(figsize=[10, 8])
+    y = flux_b_on.T[0] / tru_flux - 1
+    for i in range(num):
+        plt.subplot(num + 1, 3, i + 1)
+        x = met[i].T[1]
+        plt.scatter(x, y, c=colors, label='Gal1', alpha=0.7)
+        plt.axhline(0, c='k', linestyle='--', alpha=0.7)
+        plt.axvline(v1[i], c='teal', linestyle='-.', alpha=0.7)
+        plt.axvline(v2[i], c='DarkOrange', linestyle='-.', alpha=0.7)
+        plt.xlabel(titles[i])
+        plt.ylabel(r'$ \Delta flux$/ flux')
+    plt.subplot(num + 1, 3, 3)
+    x = met[0].T[0]
+    plt.scatter(x, y, c=colors, label='Gal1', alpha=0.7)
+    plt.axhline(0, c='k', linestyle='--', alpha=0.7)
+    plt.xlabel('rho center')
+    plt.ylabel(r'$ \Delta flux$/ flux')
+    plt.show()
+
+
 def main():
-    num = 3 # 100
+    num = 100
     tab = make_table(num)
     get_rand_param(tab)
     for i in range(num):
         x0s = get_range(tab['hlr1'][i], tab['hlr2'][i])
-        met, det = compute_val(x0s, tab['hlr1'][i], tab['hlr2'][i],
-                               tab['flux1'][i], tab['flux2'][i],
-                               tab['e1'][i], tab['e2'][i])
+        met, det, flux, amb = compute_val(x0s, tab['hlr1'][i], tab['hlr2'][i],
+                                          tab['flux1'][i], tab['flux2'][i],
+                                          tab['e1'][i], tab['e2'][i])
         v1, v2 = get_transition_points(met, det)
+        # plot_stuff(flux, tab['flux1'][i], met, det, v1, v2)
+        if amb == 0:
+            tab['amb_cent'][i] = 'True'
         tab['vmin'][i] = v1
         tab['vmax'][i] = v2
     parentdir = os.path.abspath("..")
