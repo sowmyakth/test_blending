@@ -30,19 +30,20 @@ def get_tru_cat_cent(cat, Args):
 
 def get_tue_cat(cat, Args):
     x1, y1 = get_tru_cat_cent(cat, Args)
-    cond1 = (x1 >= int(Args.xmin) - 5) & (x1 < int(Args.xmax) + 5)
-    cond2 = (y1 >= int(Args.ymin) - 5) & (y1 < int(Args.ymax) + 5)
+    cond1 = (x1 >= int(Args.xmin)) & (x1 < int(Args.xmax))
+    cond2 = (y1 >= int(Args.ymin) ) & (y1 < int(Args.ymax))
     tru_cat = cat[np.where(cond1 & cond2)]
     return tru_cat
 
 
 def get_det_cat(cat, Args):
     cond1 = (cat['deblend_nChild'] == 0)
-    cond2 = (cat['base_GaussianCentroid_x'] >= int(Args.xmin))
-    cond3 = (cat['base_GaussianCentroid_y'] >= int(Args.ymin))
-    cond4 = (cat['base_GaussianCentroid_x'] < int(Args.xmax))
-    cond5 = (cat['base_GaussianCentroid_y'] < int(Args.ymax))
-    q, = np.where(cond1 & cond2 & cond3 & cond4 & cond5)
+    cond2 = (cat['base_SdssCentroid_x'] >= int(Args.xmin))
+    cond3 = (cat['base_SdssCentroid_y'] >= int(Args.ymin))
+    cond4 = (cat['base_SdssCentroid_x'] < int(Args.xmax))
+    cond5 = (cat['base_SdssCentroid_y'] < int(Args.ymax))
+    cond6 = ~np.isnan(cat['base_SdssShape_flux'])
+    q, = np.where(cond1 & cond2 & cond3 & cond4 & cond5 & cond6)
     det_cat = cat[q]
     return det_cat
 
@@ -92,21 +93,23 @@ def get_dist_ratio(tru_cat, det_cat, Args):
     det_sigm = get_sig_m(det_cat['base_SdssShape_xx'],
                          det_cat['base_SdssShape_yy'],
                          det_cat['base_SdssShape_xy'])
-    gal_sigm = np.sqrt(psf_sig**2 + (tru_cat['sigma_m'] / Args.scale)**2)
+    gal_sigm = np.sqrt(psf_sig**2 + (tru_cat[no_det]['sigma_m'] / Args.scale)**2)
     # t1 = np.resize(det_sigm**2, int_dist.shape)
     # t2 = np.resize(gal_sigm**2, int_dist.T.shape).T
     # new_unit_dist = np.sqrt(t1 + t2)
-    t1 = np.resize(det_sigm, int_dist.shape)
-    t2 = np.resize(gal_sigm, int_dist.T.shape).T
+    t1 = np.resize(det_sigm, int_dist.T.shape).T
+    t2 = np.resize(gal_sigm, int_dist.shape)
     new_unit_dist = t1 + t2
+    # import ipdb;ipdb.set_trace()
     return int_dist / new_unit_dist
 
 
 def get_ambig(tru_cat, det_cat, Args):
     ratio = get_dist_ratio(tru_cat, det_cat, Args)
-    ambig = np.where(ratio < 1)
+    ambig = np.where(ratio <= 1)
     ambig_det = np.unique(ambig[0])
     ambig_tru = np.unique(ambig[1])
+    print "number of ambig undet true", len(ambig_tru)
     col = Column(np.zeros(len(tru_cat)), 'ambig_blend', dtype='int')
     tru_cat.add_column(col)
     col = Column(np.zeros(len(det_cat)), 'ambig_blend', dtype='int')
@@ -121,23 +124,23 @@ def main(Args):
     # truth from catsim catalog (from wldebend)
     parentdir = os.path.abspath("..")
     tru_file = os.path.join(parentdir, 'data',
-                            'wldeb_data/LSST_%s_no_pstamps.fits'%Args.band)
+                            'wldeb_data/LSST_%s_trimmed.fits'%Args.band)
     in_cat = Table.read(tru_file, format='fits',
                         hdu=1)
     tru_cat = get_tue_cat(in_cat, Args)
     # Results from DM stack
     det_file = os.path.join(parentdir, 'data',
-                            'dm_output_%s.fits'%Args.band)
+                            'dm_output_%s_%sbin.fits'%(Args.band, Args.binSize))
     stack_cat = Table.read(det_file, format='fits',
                            hdu=1)
     det_cat = get_det_cat(stack_cat, Args)
     get_primary_detection(tru_cat, det_cat, Args)
     get_ambig(tru_cat, det_cat, Args)
     fname = os.path.join(parentdir, 'outputs',
-                         'trucat_analyis_%s_%s.fit'%(Args.band, Args.num))
+                         'trucat_analyis_%s_%sbin_%s.fits'%(Args.band, Args.binSize, Args.num))
     tru_cat.write(fname, format='fits', overwrite=True)
     fname = os.path.join(parentdir, 'outputs',
-                         'detcat_analyis_%s_%s.fit'%(Args.band, Args.num))
+                         'detcat_analyis_%s_%sbin_%s.fits'%(Args.band, Args.binSize, Args.num))
     det_cat.write(fname, format='fits', overwrite=True)
 
 
@@ -156,9 +159,11 @@ if __name__ == "__main__":
                         help="size of image (in pixels)[Default:4096]")
     parser.add_argument('--scale', default=0.2,
                         help="pixel size of image (in pixels)[Default:0.2]")
-    parser.add_argument('--band', default='r',
+    parser.add_argument('--band', default='i',
                         help="Filter image was observed in [Default:r]")
     parser.add_argument('--num', default='0',
                         help="Number to denote output file name[Default:0]")
+    parser.add_argument('--binSize', default=8,
+                        help="tempLocalBackground binSize[Default:8]")
     args = parser.parse_args()
     main(args)
