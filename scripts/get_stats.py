@@ -100,28 +100,31 @@ def get_dist_ratio(tru_cat, det_cat, Args):
     t1 = np.resize(det_sigm, int_dist.T.shape).T
     t2 = np.resize(gal_sigm, int_dist.shape)
     new_unit_dist = t1 + t2
-    # import ipdb;ipdb.set_trace()
     return int_dist / new_unit_dist
 
 
 def get_ambig(tru_cat, det_cat, Args):
+    no_det, = np.where(tru_cat['Detected'] != 1)
     ratio = get_dist_ratio(tru_cat, det_cat, Args)
+    ambig_dist = [np.min(ratio[:, i]) for i in range(no_det)]
     ambig = np.where(ratio <= 1)
     ambig_det = np.unique(ambig[0])
     ambig_tru = np.unique(ambig[1])
     print "number of ambig undet true", len(ambig_tru)
     col = Column(np.zeros(len(tru_cat)), 'ambig_blend', dtype='int')
     tru_cat.add_column(col)
+    col = Column(np.ones(len(tru_cat)) * -1, 'ambig_dist', dtype='float')
+    tru_cat.add_column(col)
     col = Column(np.zeros(len(det_cat)), 'ambig_blend', dtype='int')
     det_cat.add_column(col)
-    no_det, = np.where(tru_cat['Detected'] != 1)
     tru_cat['ambig_blend'][no_det[ambig_tru]] = 1
+    tru_cat['ambig_dist'][no_det] = ambig_dist
     det_cat['ambig_blend'][ambig_det] = 1
     tru_cat['ambig_blend'][det_cat['Primary_Detection'][ambig_det]] = 1
 
 
 def main(Args):
-    # truth from catsim catalog (from wldebend)
+    # truth from catsim catalog (from wldeblend)
     parentdir = os.path.abspath("..")
     tru_file = os.path.join(parentdir, 'data',
                             'wldeb_data/LSST_%s_trimmed.fits'%Args.band)
