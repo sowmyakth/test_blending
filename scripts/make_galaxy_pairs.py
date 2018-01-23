@@ -47,11 +47,11 @@ def get_second_galaxy(Args, cat):
     cat['fluxnorm_bulge'][1] = cat['fluxnorm_bulge'][1] * Args.bflux_frac
     cat['fluxnorm_disk'][1] = cat['fluxnorm_disk'][1] * Args.dflux_frac
     # From ellipticity and HLR compute a, b
-    hlr = get_hlr(cat['a_b'], cat['b_b'])
+    hlr = get_hlr(cat['a_b'][0], cat['b_b'][0])
     a, b = get_a_b(Args.b_e, hlr * Args.bhlr_frac)
     cat['a_b'][1] = a
     cat['b_b'][1] = b
-    hlr = get_hlr(cat['a_b'], cat['b_b'])
+    hlr = get_hlr(cat['a_b'][0], cat['b_b'][0])
     a, b = get_a_b(Args.d_e, hlr * Args.dhlr_frac)
     cat['a_d'][1] = cat['a_d'][0] * Args.dhlr_frac**0.5
     cat['b_d'][1] = cat['b_d'][0] * Args.dhlr_frac**0.5
@@ -71,6 +71,7 @@ def main(Args):
     catalog['galtileid'][0] = 0
     # Add other galaxy
     catalog = vstack([catalog, cent_gal])
+    # import ipdb;ipdb.set_trace()
     get_second_galaxy(Args, catalog)
     parentdir = os.path.abspath("..")
     fname = os.path.join(parentdir, 'data', 'wldeb_data',
