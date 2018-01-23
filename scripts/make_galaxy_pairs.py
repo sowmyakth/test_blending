@@ -27,7 +27,7 @@ def get_central_galaxy():
 def get_a_b(e, hlr):
     """Returns semimajor/minor axis from ellipticity and HLR"""
     q = (1 - e) / (1. + e)
-    b = np.sqrt(hlr)
+    b = hlr
     a = b / q
     return a, b
 
@@ -51,10 +51,10 @@ def get_second_galaxy(Args, cat):
     a, b = get_a_b(Args.b_e, hlr * Args.bhlr_frac)
     cat['a_b'][1] = a
     cat['b_b'][1] = b
-    hlr = get_hlr(cat['a_b'][0], cat['b_b'][0])
+    hlr = get_hlr(cat['a_d'][0], cat['b_d'][0])
     a, b = get_a_b(Args.d_e, hlr * Args.dhlr_frac)
-    cat['a_d'][1] = cat['a_d'][0] * Args.dhlr_frac**0.5
-    cat['b_d'][1] = cat['b_d'][0] * Args.dhlr_frac**0.5
+    cat['a_d'][1] = a
+    cat['b_d'][1] = b
     cat['pa_disk'][1] = Args.p_angle
     cat['pa_bulge'][1] = Args.p_angle
     cat['galtileid'][1] = 1
@@ -71,7 +71,6 @@ def main(Args):
     catalog['galtileid'][0] = 0
     # Add other galaxy
     catalog = vstack([catalog, cent_gal])
-    # import ipdb;ipdb.set_trace()
     get_second_galaxy(Args, catalog)
     parentdir = os.path.abspath("..")
     fname = os.path.join(parentdir, 'data', 'wldeb_data',
@@ -107,9 +106,9 @@ if __name__ == "__main__":
                         [Default:20]")
     parser.add_argument('--b_e', default=0,
                         help="Ellipticity (e) second galaxy bulge \
-                        [Default:0.2]")
+                        [Default:0.]")
     parser.add_argument('--d_e', default=0,
                         help="Ellipticity (e) second galaxy disk \
-                        [Default:0.2]")
+                        [Default:0.]")
     args = parser.parse_args()
     main(args)
