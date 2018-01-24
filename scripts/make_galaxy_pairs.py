@@ -18,7 +18,8 @@ def get_central_galaxy():
     np.random.seed(0)
     cond1 = (cat['fluxnorm_bulge'] != 0) & (cat['fluxnorm_disk'] != 0) \
         & (cat['fluxnorm_agn'] == 0)
-    cond2 = (cat['i_ab'] < 24) & (cat['a_d'] <= 1.2) & (cat['a_d'] > 0.4)
+    cond2 = (cat['i_ab'] < 24) & (cat['i_ab'] > 21) & (cat['a_d'] <= 1.2) \
+        & (cat['a_d'] > 0.4)
     q, = np.where(cond1 & cond2)
     select = q[np.random.randint(0, len(q), size=1)]
     return cat[select]
@@ -100,8 +101,8 @@ if __name__ == "__main__":
                         help="y coordinate of center of second galaxy in pixels. \
                         Center of central galaxy is (0,0). [Default:20]")
     parser.add_argument('--p_angle', default=0,
-                        help="Position of center of second galaxy in degrees \
-                        [Default:20]")
+                        help="Position angle of center of second galaxy in degrees \
+                        [Default:0]")
     parser.add_argument('--b_e', default=0,
                         help="Ellipticity (e) second galaxy bulge \
                         [Default:0.]")
