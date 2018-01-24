@@ -42,8 +42,8 @@ def get_second_galaxy(Args, cat):
     """Assigns center and bulge, dic sizes and flux of the second galaxy
     tp the input catalog
     """
-    cat['ra'][1] = cat[0]['ra'] + Args.x0 * 0.2
-    cat['dec'][1] = cat[0]['dec'] + Args.y0 * 0.2
+    cat['ra'][1] = cat[0]['ra'] + Args.x0 * 0.2 / 3600.
+    cat['dec'][1] = cat[0]['dec'] + Args.y0 * 0.2 / 3600.
     cat['fluxnorm_bulge'][1] = cat['fluxnorm_bulge'][1] * Args.bflux_frac
     cat['fluxnorm_disk'][1] = cat['fluxnorm_disk'][1] * Args.dflux_frac
     # From ellipticity and HLR compute a, b
@@ -81,8 +81,6 @@ def main(Args):
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument('--filter_band', default="i",
-                        help="LSST imaging band to simulate in[Default:i]")
     parser.add_argument('--bflux_frac', default=1,
                         help="Flux of second galaxy bulge as a fraction of \
                         central galaxy bulge flux [Default:1]")
